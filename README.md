@@ -2006,7 +2006,7 @@ GEMM/
 ## 参考资料
 
 - [CUDA C++ Programming Guide — Shared Memory / Asynchronous Copies](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
-- [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance（siboehm）](https://siboehm.com/articles/22/CUDA-MMM)：本项目原理示意图的排版参考
+- [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance（siboehm）](https://siboehm.com/articles/22/CUDA-MMM)
 - [cuBLAS 库文档](https://docs.nvidia.com/cuda/cublas/)
 - [Nsight Compute 文档](https://docs.nvidia.com/nsight-compute/)
 
