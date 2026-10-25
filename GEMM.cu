@@ -1996,7 +1996,7 @@ static cublasLtMatmulDesc_t cublaslt_desc;
 static cublasLtMatrixLayout_t cublaslt_A_layout, cublaslt_B_layout, cublaslt_C_layout;
 static cublasLtMatmulHeuristicResult_t cublaslt_heuristic;
 static void* cublaslt_workspace;
-static const size_t cublaslt_workspace_size = 4 * 1024 * 1024;
+static const size_t cublaslt_workspace_size = 64 * 1024 * 1024;
 
 /* ----------------------------------------------------------------------------
    cublas_init：初始化 cuBLAS / cuBLASLt
