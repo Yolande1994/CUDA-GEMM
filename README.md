@@ -43,7 +43,9 @@ CUDA Event 计时，预热、重复 100 次取平均值与中位数、交替采�
 
 ### 4096 尺寸性能表（-arch=native）
 
-> 更多关于 全尺寸、全版本 的数据见文件 [test/benchmark_native.txt](test/benchmark_native.txt)（`-arch=native` 编译结果） 与 [test/benchmark_sm80.txt](test/benchmark_sm80.txt)（`-arch=sm_80` 编译结果）
+> 更多关于 全尺寸、全版本 的数据见文件：  
+> [test/benchmark_native.txt](test/benchmark_native.txt)（`-arch=native` 编译结果）  
+> [test/benchmark_sm80.txt](test/benchmark_sm80.txt)（`-arch=sm_80` 编译结果）
 
 | 阶段 | 版本 | 名称 | 内容概述 | 耗时 (ms) | TFLOPS | 占 cuBLAS % |
 | --- | --- | --- | --- | ---: | ---: | ---: |
