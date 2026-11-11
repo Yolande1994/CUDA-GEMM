@@ -15,6 +15,8 @@
 
 内容包含共享内存分块、线程粗化、寄存器缓存、float4 向量化、XOR Swizzle、双缓冲、cp.async、寄存器软件流水、两级流水线、自定义分块形状等。
 
+[Tensor Core（WMMA / FP16）主线](#wmma) →
+
 <br>
 
 ## 测试环境
@@ -45,25 +47,25 @@ CUDA Event 计时，预热、重复 100 次取平均值与中位数、交替采�
 
 | 阶段 | 版本 | 名称 | 内容概述 | 耗时 (ms) | TFLOPS | 占 cuBLAS % |
 | --- | --- | --- | --- | ---: | ---: | ---: |
-| 基线 | GEMM1 | 朴素移植 | block 32×32、一线程一元素 | 188.49 | 0.73 | 7.4% |
-| 数据复用 | GEMM2 | 共享内存分块 | BM=BN=BK=32，把全局访存量从 O(MNK) 降下来 | 110.52 | 1.24 | 12.6% |
-| 线程粗化 | GEMM3 | 一维线程粗化 | TM=8，单线程多元素，改善计算访存比 | 36.54 | 3.76 | 38.2% |
-| 线程粗化 | GEMM4 | 二维线程粗化 | TM=TN=8，N 方向同样粗化 | 21.25 | 6.47 | 65.7% |
-| 寄存器 | GEMM5 | 寄存器复用 | TM=TN=8，B 值先进寄存器、避免共享内存重复读 | 21.00 | 6.55 | 66.5% |
-| 向量化 | GEMM6 | float4 访存向量化 | 128-bit LDG/STG，削减访存指令数 | 20.88 | 6.58 | 66.8% |
-| 向量化 | GEMM6B | float4 计算向量化 | 128-bit LDS，削减计算阶段 LDS 指令数 | 18.58 | 7.40 | 75.1% |
-| Bank 冲突 | GEMM7 | bank 冲突反例 | Bds[BN][BK] 转置布局，刻意展示的 bank 冲突的反面教材 | 42.32 | 3.25 | 33.0% |
-| Bank 冲突 | GEMM7B | k_offset 旋转 | 加 k_offset 旋转，缓解计算阶段冲突 | 21.29 | 6.46 | 65.6% |
-| Bank 冲突 | GEMM8 | XOR Swizzle | 用 Swizzle 映射，同时化解加载与计算两处冲突 | 16.27 | 8.45 | 85.8% |
-| 流水线 | GEMM9 | 朴素双缓冲 | 动态 SMEM 64 KB 双缓冲，但加载与计算仍串行 | 20.59 | 6.68 | 67.8% |
-| 流水线 | GEMM9B | cp.async 双缓冲 | A 侧用 DMA，省发射槽 | 20.46 | 6.72 | 68.2% |
-| 流水线 | GEMM10 | 寄存器流水 | issue/commit 拆分，让双缓冲真正形成流水 | 17.79 | 7.73 | 78.5% |
-| 流水线 | GEMM10B | 混合流水 | A 侧 cp.async，省掉预取寄存器 | 16.82 | 8.17 | 83.0% |
-| 两级流水 | GEMM11 | 两级双缓冲 | 转置布局 [BK][BM] + fragment 双缓冲，掩盖 SMEM→寄存器读延迟 | 17.80 | 7.72 | 78.4% |
-| 两级流水 | GEMM11B | 两级 + cp.async | B 侧走 DMA，省加载指令 | 16.39 | 8.39 | 85.2% |
-| 结构调优 | GEMM12 | 自定义分块 | BK=16、TM=16、TN=8、128 线程，平衡分块/寄存器/占用率 | 12.67 | 10.85 | 110.2% |
-| 基准 | GEMM13 | cuBLAS (FP32) | 官方库对照 | 13.96 | 9.85 | 100.0% |
-| 基准 | GEMM14 | cuBLASLt (FP32) | 官方库对照 | 14.46 | 9.50 | 96.5% |
+| 基线 | [GEMM1](#gemm1) | 朴素移植 | block 32×32、一线程一元素 | 188.49 | 0.73 | 7.4% |
+| 数据复用 | [GEMM2](#gemm2) | 共享内存分块 | BM=BN=BK=32，把全局访存量从 O(MNK) 降下来 | 110.52 | 1.24 | 12.6% |
+| 线程粗化 | [GEMM3](#gemm3) | 一维线程粗化 | TM=8，单线程多元素，改善计算访存比 | 36.54 | 3.76 | 38.2% |
+| 线程粗化 | [GEMM4](#gemm4) | 二维线程粗化 | TM=TN=8，N 方向同样粗化 | 21.25 | 6.47 | 65.7% |
+| 寄存器 | [GEMM5](#gemm5) | 寄存器复用 | TM=TN=8，B 值先进寄存器、避免共享内存重复读 | 21.00 | 6.55 | 66.5% |
+| 向量化 | [GEMM6](#gemm6) | float4 访存向量化 | 128-bit LDG/STG，削减访存指令数 | 20.88 | 6.58 | 66.8% |
+| 向量化 | [GEMM6B](#gemm6b) | float4 计算向量化 | 128-bit LDS，削减计算阶段 LDS 指令数 | 18.58 | 7.40 | 75.1% |
+| Bank 冲突 | [GEMM7](#gemm7) | bank 冲突反例 | Bds[BN][BK] 转置布局，刻意展示的 bank 冲突的反面教材 | 42.32 | 3.25 | 33.0% |
+| Bank 冲突 | [GEMM7B](#gemm7b) | k_offset 旋转 | 加 k_offset 旋转，缓解计算阶段冲突 | 21.29 | 6.46 | 65.6% |
+| Bank 冲突 | [GEMM8](#gemm8) | XOR Swizzle | 用 Swizzle 映射，同时化解加载与计算两处冲突 | 16.27 | 8.45 | 85.8% |
+| 流水线 | [GEMM9](#gemm9) | 朴素双缓冲 | 动态 SMEM 64 KB 双缓冲，但加载与计算仍串行 | 20.59 | 6.68 | 67.8% |
+| 流水线 | [GEMM9B](#gemm9b) | cp.async 双缓冲 | A 侧用 DMA，省发射槽 | 20.46 | 6.72 | 68.2% |
+| 流水线 | [GEMM10](#gemm10) | 寄存器流水 | issue/commit 拆分，让双缓冲真正形成流水 | 17.79 | 7.73 | 78.5% |
+| 流水线 | [GEMM10B](#gemm10b) | 混合流水 | A 侧 cp.async，省掉预取寄存器 | 16.82 | 8.17 | 83.0% |
+| 两级流水 | [GEMM11](#gemm11) | 两级双缓冲 | 转置布局 [BK][BM] + fragment 双缓冲，掩盖 SMEM→寄存器读延迟 | 17.80 | 7.72 | 78.4% |
+| 两级流水 | [GEMM11B](#gemm11b) | 两级 + cp.async | B 侧走 DMA，省加载指令 | 16.39 | 8.39 | 85.2% |
+| 结构调优 | [GEMM12](#gemm12) | 自定义分块 | BK=16、TM=16、TN=8、128 线程，平衡分块/寄存器/占用率 | 12.67 | 10.85 | 110.2% |
+| 基准 | [GEMM13](#baseline) | cuBLAS (FP32) | 官方库对照 | 13.96 | 9.85 | 100.0% |
+| 基准 | [GEMM14](#baseline) | cuBLASLt (FP32) | 官方库对照 | 14.46 | 9.50 | 96.5% |
 
 ### NCU Summary（4096 尺寸，-arch=native）
 
@@ -103,6 +105,8 @@ CUDA kernel 能用的存储分四层，越往上越快、越小、越私有。
 
 ---
 
+<a name="gemm1"></a>
+
 ## GEMM1：朴素版
 
 一个线程负责一个输出元素 `C[row][col]`，沿 K 串行读取 A 的一行和 B 的一列做点积。
@@ -133,6 +137,8 @@ __global__ void GEMM1(float* C, const float* A, const float* B, int M, int N, in
 - 每个 C 元素都要读一整行 A 和一整列 B，相同位置元素被重复读取，完成全部计算需要 2 * K * M * N。要知道全局内存访问延迟最高，频繁重复的访问浪费大量时间。
 
 <br>
+
+<a name="gemm2"></a>
 
 ## GEMM2：共享内存分块
 
@@ -206,6 +212,8 @@ A tile 的每个元素被 ty 方向的 32 个线程共用，B tile 的每个元�
 
 ---
 
+<a name="gemm3"></a>
+
 ## GEMM3：一维线程粗化（TM=8）
 
 **说明**：
@@ -261,6 +269,8 @@ __global__ void GEMM3(float* C, const float* A, const float* B, int M, int N, in
 | GEMM3 | 36.54 | 3.76 | 38.2% |
 
 <br>
+
+<a name="gemm4"></a>
 
 ## GEMM4：二维线程粗化（TM=TN=8）
 
@@ -319,6 +329,8 @@ __global__ void GEMM4(float* C, const float* A, const float* B, int M, int N, in
 **注意**：线程粗化因子也不是越大越好，因子越大，累加器占用的寄存器数量越多，occupancy 开始下降，这会降低 SM 中可供切换的 warp 数量，使延迟隐藏能力降低。
 
 <br>
+
+<a name="gemm5"></a>
 
 ## GEMM5：寄存器复用
 
@@ -396,6 +408,8 @@ NCU 印证了这一点：两版 Shared Load 的 LDS 请求数一字不差（335,
 
 <br>
 
+<a name="gemm6"></a>
+
 ## GEMM6：全局访存 float4 向量化
 
 到目前为止，A/B 从全局到 shared 的搬运都是按 float 单个搬的。
@@ -467,6 +481,8 @@ __global__ void GEMM6(float* C, const float* A, const float* B, int M, int N, in
 
 > 所有尺寸的 GEMM6 经向量化优化后，性能数据均比 GEMM5 有显著提升，唯有这 4096 尺寸下，GEMM6 版本未见明显变化。查询了 SASS，GEMM5 加载和写回用的是 LDG.E 和 STG.E，GEMM6 用的是 STG.E.128 和 LDG.E.128，加载与写回指令确实减少，说明优化本身是生效的。可能是 4096 尺寸下编译器把 GEMM5 的代码调度到了异常好的状态，计算已能掩盖住全局加载，指令不是关键瓶颈。（我相信计算机没有秘密，然时间有限，不愿在此点上继续深究）
 
+
+<a name="gemm6b"></a>
 
 ## GEMM6B：计算阶段 float4
 
@@ -569,6 +585,8 @@ NCU 报冲突用的单位 way = 实际 wavefronts ÷ 请求数。它的**零点�
 **最后：冲突只算同一波内部。** 同一波请求中有线程落在同一个 bank，形成冲突，硬件要多花周期；不同波之间落在同一 bank 不算冲突（不同周期处理，不排队）。
 
 <br>
+
+<a name="gemm7"></a>
 
 ## GEMM7：转置布局（特意保留的反面教材）
 
@@ -674,6 +692,8 @@ GEMM6B 的 `Bds[k][n]` 是 `[32][128]`，行宽 128 同样是 32 的倍数 → �
 
 > bank conflict 是隐蔽的性能杀手，改布局需特别注意。
 
+<a name="gemm7b"></a>
+
 ## GEMM7B：k_offset 循环移位（消除计算阶段的冲突）
 
 GEMM7 已经把 B 布局改成了 [BN][BK]。既然引起了冲突，就来消除冲突，本版在不放弃这个布局的前提下，尝试把它带来的冲突修掉。
@@ -716,6 +736,8 @@ k_offset 只解决了计算阶段的冲突，加载阶段转置写入 `Bds[BN][B
 > 本版作为过渡，下一版 GEMM8 用 XOR Swizzle 同时消除加载与计算两个阶段的冲突，是更常用的技术。
 
 <br>
+
+<a name="gemm8"></a>
 
 ## GEMM8：Swizzle 解决 Bank 冲突
 
@@ -848,6 +870,8 @@ __global__ void GEMM8(float* C, const float* A, const float* B, int M, int N, in
 > 现在 GEMM8 既可以在计算阶段用 float4，也不再引发强烈冲突。性能在非双缓冲的版本里达到最高。
 
 <br>
+
+<a name="gemm9"></a>
 
 ## GEMM9：朴素双缓冲
 
@@ -1003,6 +1027,8 @@ warp 少了，等内存数据的 stall 全部上涨；Barrier 下降是双缓冲
 
 <br>
 
+<a name="gemm9b"></a>
+
 ## GEMM9B：cp.async 双缓冲
 
 **cp.async 是什么**：sm_80 引入的异步拷贝指令。一条指令把全局内存的 16 字节直接搬进共享内存 —— 不经过寄存器，warp 发出指令后立即继续执行，DMA 引擎在后台搬运。比方：普通加载是 "线程亲自取快递，取到才能接着干活"；cp.async 是 "填个快递单（发指令），由快递员（DMA）后台送，线程接着该干嘛干嘛"。
@@ -1121,6 +1147,8 @@ __global__ void GEMM9B(float* C, const float* A, const float* B, int M, int N, i
 | 6144 | 53.6% | 65.1% | +17.7% |
 
 <br>
+
+<a name="gemm10"></a>
 
 ### GEMM10：寄存器软件流水
 
@@ -1258,6 +1286,8 @@ __global__ void GEMM10(float* C, const float* A, const float* B, int M, int N, i
 
 <br>
 
+<a name="gemm10b"></a>
+
 ### GEMM10B：混合流水（A 侧用 cp.async + B 侧寄存器预取）
 
 **GEMM10** 靠手工 scoreboard 让 A、B 都形成正确流水，但 A 侧的预取数据要在寄存器里放 4 个 float4（约 16 个寄存器），从 LDG 发出到落共享内存一直占着。而 A 不需要转置，可以用 cp.async 直拷，不经过寄存器。
@@ -1382,6 +1412,8 @@ __global__ void GEMM10B(float* C, const float* A, const float* B, int M, int N, 
 A 侧的 `LDG→寄存器→STS` 换成一条 cp.async，指令数减少、DMA 不占 warp 资源、省掉约 4 个 float4 预取寄存器（155→141）。native 下仍有稳定提升。
 
 <br>
+
+<a name="gemm11"></a>
 
 ## GEMM11：SMEM + fragment 两级双缓冲
 
@@ -1565,6 +1597,8 @@ __global__ void GEMM11(float* C, const float* A, const float* B, int M, int N, i
 
 <br>
 
+<a name="gemm11b"></a>
+
 ## GEMM11B：B 侧走 cp.async
 
 **GEMM11** 的 B 侧共享布局为 [BK][BN]，与全局 B 的 [K][N] 行主序对齐，搬运 B 不需要转置，因此可以把 B 侧的软件 LDG 替换为 cp.async 硬件 DMA 直拷。
@@ -1707,6 +1741,8 @@ GEMM11B 在 native 下也有效，因为 cp.async 是编译器无法帮忙做的
 
 <br>
 
+<a name="gemm12"></a>
+
 ## GEMM12：自定义分块形状
 
 在本机上选择出最优尺寸：BK：32→16，TM：8→16，TN 保持 8，线程 256→128。
@@ -1848,20 +1884,31 @@ BK 收窄让流水步长更细，TM 放大让单线程 ILP 更强。两个方向
 
 <br>
 
-## 工业基准：cuBLAS / cuBLASLt（FP32）
+<a name="baseline"></a>
 
-官方库：作为以上 GEMM1-GEMM12 所有手写 kernel 的性能分母。
+## 官方库基准：cuBLAS / cuBLASLt（FP32）
+
+用 NVIDIA 官方库做性能对照：GEMM13 是 cuBLAS，GEMM14 是 cuBLASLt；FP32 主线所有「占 cuBLAS %」都以 cuBLAS 为分母。
+
+### cuBLAS（cublasSgemm）
+
+cuBLAS 按列主序存储（同一列的元素在显存里连续排列），而我们的矩阵是 C/C++ 默认的行主序（同一行连续排列）。
+
+不需要在显存里转置数据，只要调用时对调 A/B 指针和 M/N：行主序要算 C(M,N) = A(M,K) · B(K,N)，列主序接口接收的是它的转置形式 C(N,M) = B(N,K) · A(K,M)。
 
 ```cpp
+// 列主序接口计算 C(N,M) = B(N,K) · A(K,M)，对应行主序的 C = A · B
 cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
     N, M, K, &alpha, B, N, A, K, &beta, C, N);
 ```
 
-cuBLAS 默认列主序。行主序的 `C(M,N) = A(M,K) · B(K,N)` 在列主序视角下等价于 `C(N,M) = B(N,K) · A(K,M)`，调用时指针和 M、N 都要对调：
+### cuBLASLt
 
-cuBLASLt 是可配置层，通过 matmul desc、layout、heuristic 三个描述符让库自行选择 kernel，并可使用 workspace。
+cuBLASLt 是 cuBLAS 的可配置接口层：通过矩阵描述符（matmul desc）、布局（layout）和启发式搜索（heuristic）选择具体 kernel，可额外使用 workspace。这里作为第二个官方对照版本。
 
 ---
+
+<br>
 
 <br>
 
@@ -1878,6 +1925,8 @@ cuBLASLt 是可配置层，通过 matmul desc、layout、heuristic 三个描述�
   <img src="https://img.shields.io/badge/License-MIT-9ca3af" alt="License">
 </div>
 
+<a name="wmma"></a>
+
 # Tensor Core 主线
 
 Tensor Core（wmma，FP16）。6 个版本从 wmma 指令入门到追平 cuBLAS（Tensor）的完整优化过程。
@@ -1890,11 +1939,9 @@ FP32 主线证明了手写 SIMT kernel 可以追平并反超 cuBLAS FP32。现�
 
 本段所有"占 cuBLAS %"的分母是 cuBLAS FP16，Tensor Op（GEMM21），与 FP32 主线以 cuBLAS FP32（GEMM13）为分母不同。两条主线的百分比各自与同精度库对照，不能混淆对比。
 
-> wmma 需要 sm_70+，T4 及以上均支持。
-
-> GEMM17-GEMM20、GEMM22 的 cp.async 需要 sm_80+，低架构会自动回退软件加载。
-
-> 全部版本使用 FP16 输入（g_A_half / g_B_half）、FP32 输出。
+> wmma 需要 sm_70+，T4 及以上均支持。  
+> GEMM17-GEMM20、GEMM22 的 cp.async 需要 sm_80+，低架构会自动回退软件加载。  
+> 全部版本使用 FP16 输入（g_A_half / g_B_half）、FP32 输出。  
 
 ### 版本清单
 
@@ -2013,5 +2060,4 @@ GEMM/
 ## License
 
 MIT
-
 
