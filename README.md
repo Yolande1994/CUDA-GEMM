@@ -1,5 +1,5 @@
 <div align="center">
-  <h1> GEMM CUDA 优化教学</h1>
+  <h1> GEMM CUDA 优化解析</h1>
 
   <img src="https://img.shields.io/badge/CUDA-12.x-76b900" alt="CUDA">
   <img src="https://img.shields.io/badge/Precision-FP32-3b82f6" alt="Precision">
